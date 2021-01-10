@@ -1,0 +1,29 @@
+cabal-version:       >=1.10
+
+name:                minesweeper-game
+version:             0.1.0.0
+license:             MIT
+author:              Darrell Roberts
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+description:
+    A simple command line version of the Minesweeper Game.
+    .
+    Written as an exercices in learning various concepts in Haskell.
+    .
+    * Lenses
+    * Monad Transformers
+
+
+executable minesweeper-game
+  main-is:             Main.hs
+  other-modules:       MineSweeper
+                       MineSweeperDisplay
+                       MineSweeperData
+  build-depends:       base >=4.14 && <4.15,
+                       lens,
+                       random,
+                       mtl
+  default-language:    Haskell2010
+  hs-source-dirs:      src
+  ghc-options: -Wall
