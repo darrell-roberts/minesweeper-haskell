@@ -19,7 +19,6 @@ module MineSweeper (
 
 import Control.Lens (
     anyOf,
-    ix,
     filtered,
     folded,
     lengthOf,
@@ -35,7 +34,12 @@ import Control.Lens (
  )
 import Control.Monad.Reader (MonadIO, MonadReader, ask, reader)
 import Control.Monad.State (MonadState, gets, put)
-import Data.List (delete, elemIndex, find, nub)
+import Data.Bool (bool)
+import Data.Foldable (find, toList)
+import Data.Functor ((<&>))
+import Data.List (delete, nub)
+import qualified Data.Sequence as Seq
+
 import Data.Maybe (isJust)
 import MineSweeperData (
     Board,
@@ -88,7 +92,11 @@ updateBoardState b =
     getBoard _ = id
 
     getTotalMines, getTotalFlagged, getTotalCovered :: Board -> Int
-    getTotalMines = lengthOf (traverse . coveredMinedLens . filtered (== True))
+    getTotalMines = foldr (\cell count -> case cell^.state of
+                                             Covered{_mined = True} -> succ count
+                                             UnCovered{_mined = True} -> succ count
+                                             _ -> count
+                          ) 0 -- lengthOf (traverse . coveredMinedLens . filtered (== True))
     getTotalFlagged = lengthOf (traverse . coveredFlaggedLens . filtered (== True))
     getTotalCovered = lengthOf (traverse . coveredLens)
 
@@ -100,22 +108,20 @@ newGameBoard = do
     GameEnv{rows, columns} <- ask
     let positions = (,) <$> [1 .. columns] <*> [1 .. rows]
     updateBoardState $
-        ( \(n, p) ->
-            Cell
-                { _pos = p
-                , _state = Covered False False
-                , _adjacentMines = 0
-                , _cellId = n
-                }
-        )
-            <$> zip [1 ..] positions
+        Seq.fromList $
+            ( \(n, p) ->
+                Cell
+                    { _pos = p
+                    , _state = Covered False False
+                    , _adjacentMines = mempty
+                    , _cellId = n
+                    }
+            )
+                <$> zip [0 ..] positions
 
 -- | Replace cell in the board.
 updateCell :: Cell -> Board -> Board
-updateCell cell board =
-    case elemIndex cell board of
-        Just i -> board & ix i .~ cell
-        Nothing -> board
+updateCell cell = Seq.update (cell ^. cellId) cell
 
 -- | Update board with modified cells.
 updateBoard :: Board -> [Cell] -> Board
@@ -145,7 +151,7 @@ openCell p = do
     n <- reader totalCells
     updateBoardState $ open b n (findCell b)
   where
-    findCell = find (\c -> c ^. pos == p)
+    findCell = find ((==p). view pos)
     open b n (Just c)
         | c ^? coveredFlaggedLens == Just True = b
         | c ^? coveredMinedLens == Just True =
@@ -154,7 +160,7 @@ openCell p = do
                 b
         | isCovered c =
             isFirstMove b n & \firstMove ->
-                if c ^. adjacentMines == 0 && not firstMove
+                if c ^. adjacentMines == mempty && not firstMove
                     then updateCell (openUnMined c) $ expandEmptyCells b c
                     else updateCell (openUnMined c) b
         | otherwise = b
@@ -180,14 +186,14 @@ expandEmptyCells board cell
     findMore _ [] = []
     findMore exclude (c : xs)
         | c `elem` exclude = findMore exclude xs
-        | c ^. adjacentMines == 0 =
+        | c ^. adjacentMines == mempty =
             c :
             adjacent c
                 <> findMore (c : exclude <> adjacent c) xs
         | otherwise = c : findMore (c : exclude) xs
     adjacent = okToOpen . flip adjacentCells board
     openedCells = openUnMined <$> nub (findMore [cell] (adjacent cell))
-    zeroAdjacent = filter (view (adjacentMines . to (== 0)))
+    zeroAdjacent = filter (view (adjacentMines . to (== mempty)))
     updatedBoard = updateBoard board openedCells
 
 -- | User action to flag a cell.
@@ -210,7 +216,9 @@ adjacentCells ::
     Board ->
     -- | Adjacent cells.
     [Cell]
-adjacentCells Cell{_pos = c@(x1, y1)} = filter (\c' -> c' ^. pos `elem` positions)
+-- Seq.Seq Cell
+adjacentCells Cell{_pos = c@(x1, y1)} =
+    toList . Seq.filter (\cell -> cell ^. pos `elem` positions)
   where
     f n = [pred n, n, succ n]
     positions = delete c $ [(x, y) | x <- f x1, x > 0, y <- f y1, y > 0]
@@ -247,13 +255,11 @@ exposeMines :: Board -> Board
 exposeMines = fmap (\c -> c & state . filtered (\s -> s ^? _Covered . _1 == Just True) .~ UnCovered True)
 
 updateMineCount :: Board -> Board
-updateMineCount b = go b
-  where
-    go [] = []
-    go (x : xs) = (x & adjacentMines .~ totalAdjacentMines b) : go xs
-      where
-        totalAdjacentMines =
-            foldr (\c acc -> if c ^. state . mined then succ acc else acc) 0 . adjacentCells x
+updateMineCount board =
+    let totalAdjacentMines cell =
+            foldr (\c acc -> bool acc (succ acc) (c ^. state . mined)) mempty
+                . adjacentCells cell
+     in fmap (\cell -> cell & adjacentMines .~ totalAdjacentMines cell board) board
 
 {- |
     Take a new board and randomly mine it based on
@@ -269,23 +275,16 @@ mineBoard ::
 mineBoard p = do
     board <- gets board
     totalMines <- randomMinedCount
-    b <- minedBoard totalMines board
-    updateBoardState $ updateMineCount b
+    mineBoard' totalMines board >>=
+        updateBoardState . updateMineCount
   where
-    mines n = take n <$> randomCellIds
-    minedBoard n board =
-        ( \m ->
-            fmap
-                ( \c ->
-                    if c ^. cellId `elem` m
-                        then c & state . mined .~ True
-                        else c
-                )
-                board
-        )
-            . filter (\c -> openedCell board ^. cellId /= c)
-            <$> mines n
-    openedCell board = head $ filter (\c -> c ^. pos == p) board
+    mineBoard' n board = do
+        cellIds <- take n <$> randomCellIds
+        pure $ board
+            <&> \c ->
+                if c ^. cellId `elem` cellIds && c ^. pos /= p
+                    then c & state . mined .~ True
+                    else c
 
 {- |
     Count the number of cells the Game Board

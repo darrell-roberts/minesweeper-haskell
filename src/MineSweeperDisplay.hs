@@ -12,12 +12,15 @@ module MineSweeperDisplay (
 import Control.Lens (preview, to, view, (^.), (^?))
 import Control.Monad.Reader (MonadIO, liftIO)
 import Control.Monad.State (MonadState, get)
+import Data.Foldable (toList)
 import Data.Function (on)
-import Data.List (groupBy, sortBy)
+import Data.List (groupBy)
+import qualified Data.Sequence as Seq
 import MineSweeperData (
     Board,
     Cell,
     GameState (..),
+    HasDigit(toChar),
     adjacentMines,
     coveredFlaggedLens,
     coveredMinedLens,
@@ -26,33 +29,35 @@ import MineSweeperData (
     xCoordLens,
     yCoordLens,
  )
-
 import Text.Printf (printf)
 
 -- | Group board by rows
-groupedByRows :: Board -> [Board]
+groupedByRows :: Board -> [[Cell]]
 groupedByRows =
     let yAxis = view yCoordLens
-     in groupBy ((==) `on` yAxis) . sortBy (compare `on` yAxis)
+     in groupBy ((==) `on` yAxis) . toList . Seq.sortBy (compare `on` yAxis)
 
 -- | Cell character rendering.
-displayCell :: Cell -> String
+displayCell :: Cell -> Char
 displayCell c
-    | c ^? unCoveredLens == Just True = "X"
-    | c ^? coveredFlaggedLens == Just True = "?"
+    | c ^? unCoveredLens == Just True = 'X'
+    | c ^? coveredFlaggedLens == Just True = '?'
     | c ^? (unCoveredLens . to not) == Just True =
-        if c ^. adjacentMines > 0 then show $ c ^. adjacentMines else "▢"
-    | otherwise = "."
+        if c ^. adjacentMines /= mempty
+            then toChar $ c ^. adjacentMines
+            else '▢'
+    | otherwise = '.'
 
 -- | Display mined cell coordinates for cheating.
 cheat :: Board -> String
-cheat = show . fmap (view pos) . filter ((== Just True) . preview coveredMinedLens)
+cheat = show . fmap (view pos) . Seq.filter ((== Just True) . preview coveredMinedLens)
 
 -- | Draw the Game Board to the console.
 drawBoard :: (MonadState GameState m, MonadIO m) => m ()
 drawBoard =
     get >>= \GameState{totalMines, totalCovered, totalFlagged, board} ->
         liftIO $ do
+            -- print board
             -- printf "Cheat: %s\n" $ cheat board
             printf $
                 unlines
@@ -73,7 +78,7 @@ drawBoard =
             mapM_
                 ( \row -> do
                     printf "%3d" $ yCoord row
-                    mapM_ (printf "%3s" . displayCell) row
+                    mapM_ (printf "%3c" . displayCell) row
                     printf "\n"
                 )
                 $ rows board

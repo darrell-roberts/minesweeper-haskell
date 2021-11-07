@@ -136,6 +136,6 @@ main :: IO ()
 main = do
     hSetBuffering stdout NoBuffering
     env@GameEnv{rows, columns} <- fromMaybe defaultEnvironment . parseArgs <$> getArgs
-    let state = GameState [] Active 0 (rows * columns) 0
+    let state = GameState mempty Active 0 (rows * columns) 0
     _ <- runReaderT (runStateT startGame state) env
     putStrLn "Game Over."

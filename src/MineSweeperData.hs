@@ -10,6 +10,8 @@ module MineSweeperData (
   GameState (..),
   GameStatus (..),
   Difficulty (..),
+  AdjacentCount,
+  HasDigit (..),
 
   -- * Board lenses and prisms
   coveredLens,
@@ -41,11 +43,14 @@ import Control.Lens (
   _2,
  )
 
+import Data.Word (Word8)
+import qualified Data.Sequence as Seq
+
 -- | Position of a cell in x y coordinates.
 type Pos = (Int, Int)
 
--- | Board is a list of cells.
-type Board = [Cell]
+-- | Board is a Sequence of cells.
+type Board = Seq.Seq Cell
 
 -- | State of a cell.
 data CellState
@@ -64,9 +69,49 @@ data Cell = Cell
   , -- | Cell unique identifier.
     _cellId :: Int
   , -- | Number of adjacent mines.
-    _adjacentMines :: Int
+    _adjacentMines :: AdjacentCount
   }
   deriving (Show)
+
+-- | A constrained unsigned integer from 0 to 8.
+newtype AdjacentCount = AC Word8 deriving (Show, Eq, Ord)
+
+-- | Smart constructor for AdjacentCount type to enforce bounds.
+mkAdjacentCount :: Word8 -> AdjacentCount
+mkAdjacentCount n | n >= 0 && n <= 8 = AC n
+                  | otherwise = error $
+                      show "adjacent count of " <> show n <> " is out of range."
+
+instance Num AdjacentCount where
+  AC a + AC b = mkAdjacentCount $ a + b
+  AC a - AC b = mkAdjacentCount $ a - b
+  AC a * AC b = mkAdjacentCount $ a * b
+  fromInteger = mkAdjacentCount . fromIntegral
+  abs (AC n) = mkAdjacentCount $ abs n
+  signum (AC n) = mkAdjacentCount $ signum n
+
+instance Semigroup AdjacentCount where
+  c1 <> c2 = c1 + c2
+
+instance Monoid AdjacentCount where
+  mempty = AC 0
+
+instance Bounded AdjacentCount where
+  minBound = AC 0
+  maxBound = AC 8
+
+instance Enum AdjacentCount where
+  succ (AC n) = mkAdjacentCount $ succ n
+  pred (AC n) = mkAdjacentCount $ pred n
+  enumFrom c = [c..maxBound]
+  fromEnum (AC n) = fromEnum n
+  toEnum n = mkAdjacentCount $ toEnum n
+
+class HasDigit a where
+  toChar :: a -> Char
+
+instance HasDigit AdjacentCount where
+  toChar (AC n) = head $ show n
 
 instance Eq Cell where
   a == b = _cellId a == _cellId b
