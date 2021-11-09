@@ -37,6 +37,7 @@ import Control.Monad.State (MonadState, gets, put)
 import Data.Bool (bool)
 import Data.Foldable (find, toList)
 import Data.Functor ((<&>))
+import qualified Data.IntSet as Set
 import Data.List (delete, nub)
 import qualified Data.Sequence as Seq
 
@@ -92,11 +93,14 @@ updateBoardState b =
     getBoard _ = id
 
     getTotalMines, getTotalFlagged, getTotalCovered :: Board -> Int
-    getTotalMines = foldr (\cell count -> case cell^.state of
-                                             Covered{_mined = True} -> succ count
-                                             UnCovered{_mined = True} -> succ count
-                                             _ -> count
-                          ) 0 -- lengthOf (traverse . coveredMinedLens . filtered (== True))
+    getTotalMines =
+        foldr
+            ( \cell count -> case cell ^. state of
+                Covered{_mined = True} -> succ count
+                UnCovered{_mined = True} -> succ count
+                _ -> count
+            )
+            0 -- lengthOf (traverse . coveredMinedLens . filtered (== True))
     getTotalFlagged = lengthOf (traverse . coveredFlaggedLens . filtered (== True))
     getTotalCovered = lengthOf (traverse . coveredLens)
 
@@ -121,7 +125,7 @@ newGameBoard = do
 
 -- | Replace cell in the board.
 updateCell :: Cell -> Board -> Board
-updateCell cell = Seq.update (cell^.cellId) cell
+updateCell cell = Seq.update (cell ^. cellId) cell
 
 -- | Update board with modified cells.
 updateBoard :: Board -> [Cell] -> Board
@@ -134,6 +138,18 @@ okToOpen = filter (\c -> c ^? coveredLens == Just (False, False))
 -- | Update `CellState` to `Uncovered` for `Cell`
 openUnMined :: Cell -> Cell
 openUnMined = state .~ UnCovered False
+
+-- | User action to flag a cell.
+flagCell ::
+    (MonadReader GameEnv m, MonadState GameState m) =>
+    -- | Cell position requestd to be flagged.
+    Pos ->
+    m ()
+flagCell p = do
+    board <- gets board
+    case find ((== p) . view pos) board of
+        Just c -> updateBoardState $ updateCell (c & state . flagged %~ not) board
+        Nothing -> pure ()
 
 {-- |
     User action requesting to open a cell with provided @x, y@ coordinates.
@@ -151,7 +167,7 @@ openCell p = do
     n <- reader totalCells
     updateBoardState $ open b n (findCell b)
   where
-    findCell = find ((==p). view pos)
+    findCell = find ((== p) . view pos)
     open b n (Just c)
         | c ^? coveredFlaggedLens == Just True = b
         | c ^? coveredMinedLens == Just True =
@@ -183,30 +199,18 @@ expandEmptyCells board cell
     | null openedCells = board
     | otherwise = foldr (flip expandEmptyCells) updatedBoard (zeroAdjacent openedCells)
   where
-    findMore _ [] = []
-    findMore exclude (c : xs)
-        | c `elem` exclude = findMore exclude xs
-        | c ^. adjacentMines == mempty =
-            c :
-            adjacent c
-                <> findMore (c : exclude <> adjacent c) xs
-        | otherwise = c : findMore (c : exclude) xs
-    adjacent = okToOpen . flip adjacentCells board
-    openedCells = openUnMined <$> nub (findMore [cell] (adjacent cell))
+    expand _ [] = []
+    expand visited (c@Cell{_cellId=key} : cs)
+        | key `Set.member` visited = expand visited cs -- This cell has been visited. Move on to tail.
+        | c^.adjacentMines == mempty = -- No immediate adjacent mines. Collect cell and all immediate nodes.
+            let allAdjacent = adjacent c
+                updatedVisited = Set.fromList $ key : (_cellId <$> allAdjacent)
+             in c : allAdjacent <> expand (visited <> updatedVisited) cs
+        | otherwise = c : expand (Set.insert key visited) cs -- adjacent mines. Collect cell.
+    adjacent = okToOpen . (`adjacentCells` board)
+    openedCells = openUnMined <$> nub (expand (Set.singleton $ cell^.cellId) (adjacent cell))
     zeroAdjacent = filter (view (adjacentMines . to (== mempty)))
     updatedBoard = updateBoard board openedCells
-
--- | User action to flag a cell.
-flagCell ::
-    (MonadReader GameEnv m, MonadState GameState m) =>
-    -- | Cell position requestd to be flagged.
-    Pos ->
-    m ()
-flagCell p = do
-    board <- gets board
-    case find ((== p) . view pos) board of
-        Just c -> updateBoardState $ updateCell (c & state . flagged %~ not) board
-        Nothing -> pure ()
 
 -- | Find all adjacent cells for a given cell in the game board.
 adjacentCells ::
@@ -256,7 +260,7 @@ exposeMines = fmap (\c -> c & state . filtered (\s -> s ^? _Covered . _1 == Just
 updateMineCount :: Board -> Board
 updateMineCount board =
     let totalAdjacentMines cell =
-            foldr (\c acc -> bool acc (succ acc) (c ^. state . mined)) mempty
+            foldr (\c acc -> bool acc (succ acc) (c^.state.mined)) mempty
                 . adjacentCells cell
      in fmap (\cell -> cell & adjacentMines .~ totalAdjacentMines cell board) board
 
@@ -274,16 +278,17 @@ mineBoard ::
 mineBoard p = do
     board <- gets board
     totalMines <- randomMinedCount
-    mineBoard' totalMines board >>=
-        updateBoardState . updateMineCount
+    go totalMines board
+        >>= updateBoardState . updateMineCount
   where
-    mineBoard' n board = do
-        cellIds <- take n <$> randomCellIds
-        pure $ board
-            <&> \c ->
-                if c ^. cellId `elem` cellIds && c ^. pos /= p
-                    then c & state . mined .~ True
-                    else c
+    go n board = do
+        cellIds <- Set.fromList . take n <$> randomCellIds
+        pure $
+            board
+                <&> \c@Cell{_cellId=key} ->
+                    if key `Set.member` cellIds && c^.pos /= p
+                        then c & state . mined .~ True
+                        else c
 
 {- |
     Count the number of cells the Game Board

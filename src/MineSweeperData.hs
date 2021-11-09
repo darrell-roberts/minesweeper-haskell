@@ -116,6 +116,9 @@ instance HasDigit AdjacentCount where
 instance Eq Cell where
   a == b = _cellId a == _cellId b
 
+instance Ord Cell where
+  compare Cell{_cellId=c1} Cell{_cellId=c2} = compare c1 c2
+
 newtype Difficulty = Difficulty (Float, Float)
 
 -- | Game environment. Holds the board dimentions.
