@@ -121,7 +121,7 @@ newGameBoard = do
 
 -- | Replace cell in the board.
 updateCell :: Cell -> Board -> Board
-updateCell cell = Seq.update (cell ^. cellId) cell
+updateCell cell = Seq.update (cell^.cellId) cell
 
 -- | Update board with modified cells.
 updateBoard :: Board -> [Cell] -> Board
@@ -216,12 +216,11 @@ adjacentCells ::
     Board ->
     -- | Adjacent cells.
     [Cell]
--- Seq.Seq Cell
-adjacentCells Cell{_pos = c@(x1, y1)} =
-    toList . Seq.filter (\cell -> cell ^. pos `elem` positions)
+adjacentCells Cell{_pos = cell@(x1, y1)} =
+    toList . Seq.filter ((`elem` nodes) . view pos)
   where
-    f n = [pred n, n, succ n]
-    positions = delete c $ [(x, y) | x <- f x1, x > 0, y <- f y1, y > 0]
+    edges n = [pred n, n, succ n]
+    nodes = delete cell $ [(x, y) | x <- edges x1, x > 0, y <- edges y1, y > 0]
 
 -- | Evaluate various Game states.
 isLoss
