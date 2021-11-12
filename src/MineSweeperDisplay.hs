@@ -7,6 +7,7 @@
 module MineSweeperDisplay (
     displayCell,
     drawBoard,
+    drawGameBoard
 ) where
 
 import Control.Lens (preview, to, view, (^.), (^?))
@@ -52,6 +53,24 @@ displayCell c
 cheat :: Board -> String
 cheat = show . fmap (view pos) . Seq.filter ((== Just True) . preview coveredMinedLens)
 
+rows :: Board -> [[Cell]]
+rows = groupedByRows
+
+drawGameBoard :: Board -> IO ()
+drawGameBoard board = do
+    printf "%3s" ""
+    mapM_ (printf "%3d") $ view xCoordLens <$> head (rows board)
+    printf "\n"
+    mapM_
+        ( \row -> do
+            printf "%3d" $ yCoord row
+            mapM_ (printf "%3c" . displayCell) row
+            printf "\n"
+        )
+        $ rows board
+    where
+        yCoord = view yCoordLens . head
+
 -- | Draw the Game Board to the console.
 drawBoard :: (MonadState GameState m, MonadIO m) => m ()
 drawBoard =
@@ -72,16 +91,5 @@ drawBoard =
                 totalMines
                 totalCovered
                 totalFlagged
-            printf "%3s" ""
-            mapM_ (printf "%3d") $ view xCoordLens <$> head (rows board)
-            printf "\n"
-            mapM_
-                ( \row -> do
-                    printf "%3d" $ yCoord row
-                    mapM_ (printf "%3c" . displayCell) row
-                    printf "\n"
-                )
-                $ rows board
-  where
-    rows b = groupedByRows b
-    yCoord = view yCoordLens . head
+            drawGameBoard board
+

@@ -15,6 +15,12 @@ module MineSweeper (
     -- * User actions
     openCell,
     flagCell,
+    -- Testing
+    okToOpen,
+    adjacentCells,
+    updateMineCount,
+    openUnMined,
+    updateCell,
 ) where
 
 import Control.Lens (
@@ -23,7 +29,6 @@ import Control.Lens (
     folded,
     lengthOf,
     preview,
-    to,
     view,
     (%~),
     (&),
@@ -38,8 +43,9 @@ import Data.Bool (bool)
 import Data.Foldable (find, toList)
 import Data.Functor ((<&>))
 import qualified Data.IntSet as Set
-import Data.List (delete, nub)
+import Data.List (delete)
 import qualified Data.Sequence as Seq
+import qualified Data.Set as CSet
 
 import Data.Maybe (isJust)
 import MineSweeperData (
@@ -64,6 +70,9 @@ import MineSweeperData (
     _Covered,
  )
 import System.Random (getStdGen, getStdRandom, randomR, randomRs)
+
+type CellSet = CSet.Set Cell
+type VisitedKeys = Set.IntSet
 
 {- |
     Update the game board in state with evaluated
@@ -176,41 +185,34 @@ openCell p = do
                 b
         | isCovered c =
             isFirstMove b n & \firstMove ->
-                if c ^. adjacentMines == mempty && not firstMove
-                    then updateCell (openUnMined c) $ expandEmptyCells b c
+                if c^.adjacentMines == mempty && not firstMove
+                    then
+                        let updatedCells = fst $ collect b mempty (getAdjacentCells b c)
+                            openedCells = openUnMined <$> CSet.toList (CSet.insert c updatedCells)
+                         in updateBoard b openedCells
                     else updateCell (openUnMined c) b
         | otherwise = b
     open b _ Nothing = b
     isCovered = isJust . preview coveredLens
 
+getAdjacentCells :: Board -> Cell -> CellSet
+getAdjacentCells board = CSet.fromList . okToOpen . (`adjacentCells` board)
+
 {- |
-    Opens all adjacent cells recursively starting from the
+    Collects all adjacent cells recursively starting from the
     postition cell provided. Any cells that are either already
     opened, mined or flagged will not be opened.
 -}
-expandEmptyCells ::
-    -- | Board to expand cells.
-    Board ->
-    -- | Cell position to expand from.
-    Cell ->
-    -- | Expanded Board.
-    Board
-expandEmptyCells board cell
-    | null openedCells = board
-    | otherwise = foldr (flip expandEmptyCells) updatedBoard (zeroAdjacent openedCells)
+collect :: Board -> VisitedKeys -> CellSet -> (CellSet, VisitedKeys)
+collect board v = foldr fcheck (mempty, v)
   where
-    expand _ [] = []
-    expand visited (c@Cell{_cellId=key} : cs)
-        | key `Set.member` visited = expand visited cs -- This cell has been visited. Move on to tail.
-        | c^.adjacentMines == mempty = -- No immediate adjacent mines. Collect cell and all immediate nodes.
-            let allAdjacent = adjacent c
-                updatedVisited = Set.fromList $ key : (_cellId <$> allAdjacent)
-             in c : allAdjacent <> expand (visited <> updatedVisited) cs
-        | otherwise = c : expand (Set.insert key visited) cs -- adjacent mines. Collect cell.
-    adjacent = okToOpen . (`adjacentCells` board)
-    openedCells = openUnMined <$> nub (expand (Set.singleton $ cell^.cellId) (adjacent cell))
-    zeroAdjacent = filter (view (adjacentMines . to (== mempty)))
-    updatedBoard = updateBoard board openedCells
+    fcheck c@Cell{_cellId = key} (freeCells, visited)
+        | key `Set.member` visited = (freeCells, visited)
+        | c^.adjacentMines == mempty =
+            let allAdjacent = getAdjacentCells board c
+                (nestedFreeCells, nestedVisited) = collect board (Set.insert key visited) allAdjacent
+             in (allAdjacent <> freeCells <> nestedFreeCells, visited <> nestedVisited)
+        | otherwise = (CSet.insert c freeCells, Set.insert key visited)
 
 -- | Find all adjacent cells for a given cell in the game board.
 adjacentCells ::
@@ -260,7 +262,7 @@ exposeMines = fmap (\c -> c & state . filtered (\s -> s ^? _Covered . _1 == Just
 updateMineCount :: Board -> Board
 updateMineCount board =
     let totalAdjacentMines cell =
-            foldr (\c acc -> bool acc (succ acc) (c^.state.mined)) mempty
+            foldr (\c acc -> bool acc (succ acc) (c ^. state . mined)) mempty
                 . adjacentCells cell
      in fmap (\cell -> cell & adjacentMines .~ totalAdjacentMines cell board) board
 
@@ -285,8 +287,8 @@ mineBoard p = do
         cellIds <- Set.fromList . take n <$> randomCellIds
         pure $
             board
-                <&> \c@Cell{_cellId=key} ->
-                    if key `Set.member` cellIds && c^.pos /= p
+                <&> \c@Cell{_cellId = key} ->
+                    if key `Set.member` cellIds && c ^. pos /= p
                         then c & state . mined .~ True
                         else c
 
