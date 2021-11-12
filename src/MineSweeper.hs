@@ -180,17 +180,14 @@ openCell p = do
     open b n (Just c)
         | c ^? coveredFlaggedLens == Just True = b
         | c ^? coveredMinedLens == Just True =
-            updateCell
-                (c & state .~ UnCovered True)
-                b
+            updateCell (c & state .~ UnCovered True) b
         | isCovered c =
-            isFirstMove b n & \firstMove ->
-                if c^.adjacentMines == mempty && not firstMove
-                    then
-                        let updatedCells = fst $ collect b mempty (getAdjacentCells b c)
-                            openedCells = openUnMined <$> CSet.toList (CSet.insert c updatedCells)
-                         in updateBoard b openedCells
-                    else updateCell (openUnMined c) b
+            if c^.adjacentMines == mempty && not (isFirstMove b n)
+                then
+                    let (updatedCells,_) = collect b mempty (getAdjacentCells b c)
+                        openedCells = openUnMined <$> CSet.toList (CSet.insert c updatedCells)
+                     in updateBoard b openedCells
+                else updateCell (openUnMined c) b
         | otherwise = b
     open b _ Nothing = b
     isCovered = isJust . preview coveredLens
