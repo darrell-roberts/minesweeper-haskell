@@ -41,10 +41,12 @@ import Control.Lens (
   makePrisms,
   _1,
   _2,
+  (^?),
  )
 
 import Data.Word (Word8)
 import qualified Data.Sequence as Seq
+import Data.Bool (bool)
 
 -- | Position of a cell in x y coordinates.
 type Pos = (Int, Int)
@@ -55,23 +57,23 @@ type Board = Seq.Seq Cell
 -- | State of a cell.
 data CellState
   = -- | Covered cell. Either flagged or closed.
-    Covered {_mined :: Bool, _flagged :: Bool}
+    Covered {_mined :: !Bool, _flagged :: !Bool}
   | -- | Uncovered cell.
-    UnCovered {_mined :: Bool}
+    UnCovered {_mined :: !Bool}
   deriving (Show, Eq)
 
 -- | A Cell in the Minesweeper board.
 data Cell = Cell
   { -- | Cell coordinates.
-    _pos :: Pos
+    _pos :: !Pos
   , -- | Cell state.
-    _state :: CellState
+    _state :: !CellState
   , -- | Cell unique identifier.
-    _cellId :: Int
+    _cellId :: !Int
   , -- | Number of adjacent mines.
-    _adjacentMines :: AdjacentCount
+    _adjacentMines :: !AdjacentCount
   }
-  deriving (Show)
+  -- deriving (Show)
 
 -- | A constrained unsigned integer from 0 to 8.
 newtype AdjacentCount = AC Word8 deriving (Show, Eq, Ord)
@@ -117,7 +119,7 @@ instance Eq Cell where
   a == b = _cellId a == _cellId b
 
 instance Ord Cell where
-  compare Cell{_cellId=c1} Cell{_cellId=c2} = compare c1 c2
+  compare a b = compare (_cellId a) (_cellId b)
 
 newtype Difficulty = Difficulty (Float, Float)
 
@@ -179,3 +181,6 @@ unCoveredLens = state . _UnCovered
 xCoordLens, yCoordLens :: Lens' Cell Int
 xCoordLens = pos . _1
 yCoordLens = pos . _2
+
+instance Show Cell where
+  show c = "id: " <> show (_cellId c) <> " Pos: " <> show (_pos c) <> bool "" "\x1f4a3" (c ^? coveredMinedLens == Just True)

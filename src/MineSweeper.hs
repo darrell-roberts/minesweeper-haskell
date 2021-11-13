@@ -1,6 +1,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE BangPatterns #-}
 
 {- |
     Game Types and functions for a MineSweeper Game.
@@ -44,9 +45,9 @@ import Control.Monad.State (MonadState, gets, put)
 import Data.Bool (bool)
 import Data.Foldable (find, toList)
 import Data.Functor ((<&>))
-import qualified Data.IntSet as Set
+import qualified Data.IntSet as IntSet
 import qualified Data.Sequence as Seq
-import qualified Data.Set as CSet
+import qualified Data.Set as Set
 
 import Data.Maybe (isJust)
 import MineSweeperData (
@@ -72,8 +73,8 @@ import MineSweeperData (
  )
 import System.Random (getStdGen, getStdRandom, randomR, randomRs)
 
-type CellSet = CSet.Set Cell
-type VisitedKeys = Set.IntSet
+type CellSet = Set.Set Cell
+type VisitedKeys = IntSet.IntSet
 
 {- |
     Update the game board in state with evaluated
@@ -105,7 +106,7 @@ updateBoardState b =
     getTotalMines, getTotalFlagged, getTotalCovered :: Board -> Int
     getTotalMines =
         foldr
-            ( \cell count -> case cell ^. state of
+            ( \cell count -> case cell^.state of
                 Covered{_mined = True} -> succ count
                 UnCovered{_mined = True} -> succ count
                 _ -> count
@@ -186,7 +187,7 @@ openCell p = do
             if c^.adjacentMines == mempty && not (isFirstMove b n)
                 then
                     let (updatedCells,_) = collect b mempty (getAdjacentCells b c)
-                        openedCells = openUnMined <$> CSet.toList (CSet.insert c updatedCells)
+                        openedCells = openUnMined <$> Set.toList (Set.insert c updatedCells)
                      in updateBoard b openedCells
                 else updateCell (openUnMined c) b
         | otherwise = b
@@ -194,7 +195,7 @@ openCell p = do
     isCovered = isJust . preview coveredLens
 
 getAdjacentCells :: Board -> Cell -> CellSet
-getAdjacentCells board = CSet.fromList . okToOpen . (`adjacentCells` board)
+getAdjacentCells board = Set.fromList . okToOpen . (`adjacentCells` board)
 
 {- |
     Collects all adjacent cells recursively starting from the
@@ -204,13 +205,13 @@ getAdjacentCells board = CSet.fromList . okToOpen . (`adjacentCells` board)
 collect :: Board -> VisitedKeys -> CellSet -> (CellSet, VisitedKeys)
 collect board = foldr fcheck . (mempty,)
   where
-    fcheck c@Cell{_cellId = key} (freeCells, visited)
-        | key `Set.member` visited = (freeCells, visited)
+    fcheck c@Cell{_cellId = key} (!freeCells, !visited)
+        | key `IntSet.member` visited = (freeCells, visited)
         | c^.adjacentMines == mempty =
             let allAdjacent = getAdjacentCells board c
-                (nestedFreeCells, nestedVisited) = collect board (Set.insert key visited) allAdjacent
+                (nestedFreeCells, nestedVisited) = collect board (IntSet.insert key visited) allAdjacent
              in (allAdjacent <> freeCells <> nestedFreeCells, visited <> nestedVisited)
-        | otherwise = (CSet.insert c freeCells, Set.insert key visited)
+        | otherwise = (Set.insert c freeCells, IntSet.insert key visited)
 
 -- | Find all adjacent cells for a given cell in the game board.
 adjacentCells ::
@@ -220,12 +221,12 @@ adjacentCells ::
     Board ->
     -- | Adjacent cells.
     [Cell]
-adjacentCells Cell{_pos = (x1, y1), _cellId = key} =
+adjacentCells Cell{_pos = p@(x1, y1)} =
     toList . Seq.filter ((`elem` nodes) . view pos)
   where
     edges n = [pred n, n, succ n]
     nodeList = [(x, y) | x <- edges x1, x > 0, y <- edges y1, y > 0]
-    nodes = Seq.deleteAt key $ Seq.fromList nodeList
+    nodes = Set.delete p $ Set.fromList nodeList
 
 -- | Evaluate various Game states.
 isLoss
@@ -283,11 +284,11 @@ mineBoard p = do
         >>= updateBoardState . updateMineCount
   where
     go n board = do
-        cellIds <- Set.fromList . take n <$> randomCellIds
+        cellIds <- IntSet.fromList . take n <$> randomCellIds
         pure $
             board
                 <&> \c@Cell{_cellId = key} ->
-                    if key `Set.member` cellIds && c ^. pos /= p
+                    if key `IntSet.member` cellIds && c^.pos /= p
                         then c & state . mined .~ True
                         else c
 

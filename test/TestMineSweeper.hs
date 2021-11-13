@@ -1,12 +1,15 @@
+{-# LANGUAGE BangPatterns #-}
+
 module Main where
 
 import Control.Lens (view, (&), (.~), (^.))
 import Data.Bool (bool)
 import Data.Foldable
-import qualified Data.IntSet as Set
+import qualified Data.IntSet as IntSet
 import Data.Maybe
 import qualified Data.Sequence as Seq
-import qualified Data.Set as CSet
+import qualified Data.Set as Set
+import Debug.Trace
 import MineSweeper hiding (openCell)
 import MineSweeperData hiding (board)
 import MineSweeperDisplay (drawGameBoard)
@@ -14,8 +17,8 @@ import System.Environment (getArgs)
 import System.Exit (exitFailure)
 import Text.Read (readMaybe)
 
-type CellSet = CSet.Set Cell
-type VisitedKeys = Set.IntSet
+type CellSet = Set.Set Cell
+type VisitedKeys = IntSet.IntSet
 
 testBoard :: Board
 testBoard = Seq.fromList ps
@@ -28,10 +31,10 @@ testBoard = Seq.fromList ps
 
 minedPositions :: [Pos]
 minedPositions =
-    [ (2, 5)
+    [ (1, 5)
     , (3, 2)
-    , (3, 5)
-    , (2, 1)
+    , (3, 3)
+    , (1, 6)
     , (5, 5)
     , (11, 7)
     , (12, 11)
@@ -52,23 +55,23 @@ minedBoard =
 
 openCell :: Board -> Cell -> Board
 openCell board cell =
-    let updatedCells = fst $ collect board (Set.singleton $ cell ^. cellId) (getAdjacentCells board cell)
-        openedCells = fmap openUnMined (CSet.toList updatedCells)
+    let updatedCells = fst $ collect board (IntSet.singleton $ cell ^. cellId) (getAdjacentCells board cell)
+        openedCells = fmap openUnMined (Set.toList updatedCells)
      in foldr updateCell board openedCells
 
 collect :: Board -> VisitedKeys -> CellSet -> (CellSet, VisitedKeys)
-collect board v = foldr fcheck (mempty, v)
+collect board !v !cs = trace ("adjacent: " <> show cs <> " visited: " <> show v <> "\n") foldr fcheck (mempty, v) cs
   where
-    fcheck c@Cell{_cellId = key} (freeCells, visited)
-        | key `Set.member` visited = (freeCells, visited)
-        | c^.adjacentMines == mempty =
+    fcheck c@Cell{_cellId = key} (!freeCells, !visited)
+        | key `IntSet.member` visited = (freeCells, visited)
+        | c ^. adjacentMines == mempty =
             let allAdjacent = getAdjacentCells board c
-                (nestedFreeCells, nestedVisited) = collect board (Set.insert key visited) allAdjacent
+                (nestedFreeCells, nestedVisited) = collect board (IntSet.insert key visited) allAdjacent
              in (allAdjacent <> freeCells <> nestedFreeCells, visited <> nestedVisited)
-        | otherwise = (CSet.insert c freeCells, Set.insert key visited)
+        | otherwise = (Set.insert c freeCells, IntSet.insert key visited)
 
 getAdjacentCells :: Board -> Cell -> CellSet
-getAdjacentCells board = CSet.fromList . okToOpen . (`adjacentCells` board)
+getAdjacentCells board = Set.fromList . okToOpen . (`adjacentCells` board)
 
 parseArgs :: [String] -> Pos
 parseArgs (x : y : _) = fromMaybe (7, 7) p
@@ -78,10 +81,13 @@ parseArgs (x : y : _) = fromMaybe (7, 7) p
             <*> (readMaybe y :: Maybe Int)
 parseArgs _ = (7, 7)
 
+posToCell :: Pos -> Maybe Cell
+posToCell p = find ((== p) . view pos) minedBoard
+
 main :: IO ()
 main = do
     p <- parseArgs <$> getArgs
-    let cell = find ((== p) . view pos) minedBoard
+    let cell = posToCell p
     case cell of
         Just c -> do
             putStrLn $ "Opened cell " <> show c
