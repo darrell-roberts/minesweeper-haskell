@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TupleSections #-}
 
 {- |
     Game Types and functions for a MineSweeper Game.
@@ -15,6 +16,7 @@ module MineSweeper (
     -- * User actions
     openCell,
     flagCell,
+
     -- Testing
     okToOpen,
     adjacentCells,
@@ -43,7 +45,6 @@ import Data.Bool (bool)
 import Data.Foldable (find, toList)
 import Data.Functor ((<&>))
 import qualified Data.IntSet as Set
-import Data.List (delete)
 import qualified Data.Sequence as Seq
 import qualified Data.Set as CSet
 
@@ -121,8 +122,8 @@ newGameBoard = do
     GameEnv{rows, columns} <- ask
     let positions = (,) <$> [1 .. columns] <*> [1 .. rows]
     updateBoardState $
-        Seq.fromList $
-            ( \(n, p) ->
+        Seq.fromList $ zipWith
+            ( \n p ->
                 Cell
                     { _pos = p
                     , _state = Covered False False
@@ -130,7 +131,7 @@ newGameBoard = do
                     , _cellId = n
                     }
             )
-                <$> zip [0 ..] positions
+            [0..] positions
 
 -- | Replace cell in the board.
 updateCell :: Cell -> Board -> Board
@@ -201,7 +202,7 @@ getAdjacentCells board = CSet.fromList . okToOpen . (`adjacentCells` board)
     opened, mined or flagged will not be opened.
 -}
 collect :: Board -> VisitedKeys -> CellSet -> (CellSet, VisitedKeys)
-collect board v = foldr fcheck (mempty, v)
+collect board = foldr fcheck . (mempty,)
   where
     fcheck c@Cell{_cellId = key} (freeCells, visited)
         | key `Set.member` visited = (freeCells, visited)
@@ -219,11 +220,12 @@ adjacentCells ::
     Board ->
     -- | Adjacent cells.
     [Cell]
-adjacentCells Cell{_pos = cell@(x1, y1)} =
+adjacentCells Cell{_pos = (x1, y1), _cellId = key} =
     toList . Seq.filter ((`elem` nodes) . view pos)
   where
     edges n = [pred n, n, succ n]
-    nodes = delete cell $ [(x, y) | x <- edges x1, x > 0, y <- edges y1, y > 0]
+    nodeList = [(x, y) | x <- edges x1, x > 0, y <- edges y1, y > 0]
+    nodes = Seq.deleteAt key $ Seq.fromList nodeList
 
 -- | Evaluate various Game states.
 isLoss
