@@ -11,7 +11,6 @@ module MineSweeperData (
   GameStatus (..),
   Difficulty (..),
   AdjacentCount,
-  HasDigit (..),
 
   -- * Board lenses and prisms
   coveredLens,
@@ -76,7 +75,7 @@ data Cell = Cell
   -- deriving (Show)
 
 -- | A constrained unsigned integer from 0 to 8.
-newtype AdjacentCount = AC Word8 deriving (Show, Eq, Ord)
+newtype AdjacentCount = AC Word8 deriving (Eq, Ord)
 
 -- | Smart constructor for AdjacentCount type to enforce bounds.
 mkAdjacentCount :: Word8 -> AdjacentCount
@@ -109,11 +108,8 @@ instance Enum AdjacentCount where
   fromEnum (AC n) = fromEnum n
   toEnum n = mkAdjacentCount $ toEnum n
 
-class HasDigit a where
-  toChar :: a -> Char
-
-instance HasDigit AdjacentCount where
-  toChar (AC n) = head $ show n
+instance Show AdjacentCount where
+  show (AC n) = show n
 
 instance Eq Cell where
   a == b = _cellId a == _cellId b

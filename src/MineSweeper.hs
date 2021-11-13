@@ -1,7 +1,7 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE BangPatterns #-}
 
 {- |
     Game Types and functions for a MineSweeper Game.
@@ -17,7 +17,6 @@ module MineSweeper (
     -- * User actions
     openCell,
     flagCell,
-
     -- Testing
     okToOpen,
     adjacentCells,
@@ -106,7 +105,7 @@ updateBoardState b =
     getTotalMines, getTotalFlagged, getTotalCovered :: Board -> Int
     getTotalMines =
         foldr
-            ( \cell count -> case cell^.state of
+            ( \cell count -> case cell ^. state of
                 Covered{_mined = True} -> succ count
                 UnCovered{_mined = True} -> succ count
                 _ -> count
@@ -123,16 +122,18 @@ newGameBoard = do
     GameEnv{rows, columns} <- ask
     let positions = (,) <$> [1 .. columns] <*> [1 .. rows]
     updateBoardState $
-        Seq.fromList $ zipWith
-            ( \n p ->
-                Cell
-                    { _pos = p
-                    , _state = Covered False False
-                    , _adjacentMines = mempty
-                    , _cellId = n
-                    }
-            )
-            [0..] positions
+        Seq.fromList $
+            zipWith
+                ( \n p ->
+                    Cell
+                        { _pos = p
+                        , _state = Covered False False
+                        , _adjacentMines = mempty
+                        , _cellId = n
+                        }
+                )
+                [0 ..]
+                positions
 
 -- | Replace cell in the board.
 updateCell :: Cell -> Board -> Board
@@ -184,9 +185,9 @@ openCell p = do
         | c ^? coveredMinedLens == Just True =
             updateCell (c & state .~ UnCovered True) b
         | isCovered c =
-            if c^.adjacentMines == mempty && not (isFirstMove b n)
+            if c ^. adjacentMines == mempty && not (isFirstMove b n)
                 then
-                    let (updatedCells,_) = collect b mempty (getAdjacentCells b c)
+                    let (updatedCells, _) = collect b mempty (getAdjacentCells b c)
                         openedCells = openUnMined <$> Set.toList (Set.insert c updatedCells)
                      in updateBoard b openedCells
                 else updateCell (openUnMined c) b
@@ -207,10 +208,12 @@ collect board = foldr fcheck . (mempty,)
   where
     fcheck c@Cell{_cellId = key} (!freeCells, !visited)
         | key `IntSet.member` visited = (freeCells, visited)
-        | c^.adjacentMines == mempty =
+        | c ^. adjacentMines == mempty =
             let allAdjacent = getAdjacentCells board c
                 (nestedFreeCells, nestedVisited) = collect board (IntSet.insert key visited) allAdjacent
-             in (allAdjacent <> freeCells <> nestedFreeCells, visited <> nestedVisited)
+             in ( Set.insert c allAdjacent <> freeCells <> nestedFreeCells
+                , IntSet.insert key visited <> nestedVisited
+                )
         | otherwise = (Set.insert c freeCells, IntSet.insert key visited)
 
 -- | Find all adjacent cells for a given cell in the game board.
@@ -288,7 +291,7 @@ mineBoard p = do
         pure $
             board
                 <&> \c@Cell{_cellId = key} ->
-                    if key `IntSet.member` cellIds && c^.pos /= p
+                    if key `IntSet.member` cellIds && c ^. pos /= p
                         then c & state . mined .~ True
                         else c
 

@@ -21,7 +21,7 @@ import MineSweeperData (
     Board,
     Cell,
     GameState (..),
-    HasDigit(toChar),
+    -- HasDigit(toChar),
     adjacentMines,
     coveredFlaggedLens,
     coveredMinedLens,
@@ -39,15 +39,15 @@ groupedByRows =
      in groupBy ((==) `on` yAxis) . toList . Seq.sortBy (compare `on` yAxis)
 
 -- | Cell character rendering.
-displayCell :: Cell -> Char
+displayCell :: Cell -> String
 displayCell c
-    | c ^? unCoveredLens == Just True = 'X'
-    | c ^? coveredFlaggedLens == Just True = '?'
+    | c ^? unCoveredLens == Just True = "\x1f4a3" -- 'X'
+    | c ^? coveredFlaggedLens == Just True = "\x1f3f4" -- "?"
     | c ^? (unCoveredLens . to not) == Just True =
         if c ^. adjacentMines /= mempty
-            then toChar $ c ^. adjacentMines
-            else '▢'
-    | otherwise = '.'
+            then "   " <> show (c^.adjacentMines) -- toChar $ c ^. adjacentMines
+            else "\x1f431" -- '▢'
+    | otherwise = "\x26aa" -- '.'
 
 -- | Display mined cell coordinates for cheating.
 cheat :: Board -> String
@@ -59,13 +59,13 @@ rows = groupedByRows
 drawGameBoard :: Board -> IO ()
 drawGameBoard board = do
     printf "%3s" ""
-    mapM_ (printf "%3d") $ view xCoordLens <$> head (rows board)
-    printf "\n"
+    mapM_ (printf " %3d") $ view xCoordLens <$> head (rows board)
+    printf "\n\n"
     mapM_
         ( \row -> do
             printf "%3d" $ yCoord row
-            mapM_ (printf "%3c" . displayCell) row
-            printf "\n"
+            mapM_ (printf "%3s" . displayCell) row
+            printf "\n\n"
         )
         $ rows board
     where
