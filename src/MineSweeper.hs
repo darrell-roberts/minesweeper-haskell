@@ -206,8 +206,8 @@ getAdjacentCells board = Set.fromList . okToOpen . (`adjacentCells` board)
 collect :: Board -> VisitedKeys -> CellSet -> (CellSet, VisitedKeys)
 collect board = foldr fcheck . (mempty,)
   where
-    fcheck c@Cell{_cellId = key} (!freeCells, !visited)
-        | key `IntSet.member` visited = (freeCells, visited)
+    fcheck c@Cell{_cellId = key} r@(!freeCells, !visited)
+        | key `IntSet.member` visited = r
         | c ^. adjacentMines == mempty =
             let allAdjacent = getAdjacentCells board c
                 (nestedFreeCells, nestedVisited) =
