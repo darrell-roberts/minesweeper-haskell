@@ -55,7 +55,7 @@ minedBoard =
 
 openCell :: Board -> Cell -> Board
 openCell board cell =
-    let updatedCells = fst $ collect board (IntSet.singleton $ cell^.cellId) (getAdjacentCells board cell)
+    let updatedCells = fst $ collect board (IntSet.singleton $ cell ^. cellId) (getAdjacentCells board cell)
         openedCells = fmap openUnMined (Set.toList updatedCells)
      in foldr updateCell board $ trace ("opening cells " <> show openedCells) openedCells
 
@@ -64,11 +64,19 @@ collect board !v !cs = trace ("adjacent: " <> show cs <> " visited: " <> show v 
   where
     fcheck c@Cell{_cellId = key} (!freeCells, !visited)
         | key `IntSet.member` visited = trace ("ignoring " <> show c) (freeCells, visited)
-        | c^.adjacentMines == mempty =
+        | c ^. adjacentMines == mempty =
             let allAdjacent = getAdjacentCells board c
-                (nestedFreeCells, nestedVisited) = collect board (IntSet.insert key visited) allAdjacent
-             in trace ("recurse for " <> show c) (Set.insert c allAdjacent <> freeCells <> nestedFreeCells, IntSet.insert key visited <> nestedVisited)
-        | otherwise = trace ("collecting " <> show c) (Set.insert c freeCells, IntSet.insert key visited)
+                (nestedFreeCells, nestedVisited) =
+                    collect board (IntSet.insert key visited) allAdjacent
+             in trace
+                    ("recurse for " <> show c)
+                    ( Set.insert c allAdjacent <> freeCells <> nestedFreeCells
+                    , IntSet.insert key visited <> nestedVisited
+                    )
+        | otherwise =
+            trace
+                ("collecting " <> show c)
+                (Set.insert c freeCells, IntSet.insert key visited)
 
 getAdjacentCells :: Board -> Cell -> CellSet
 getAdjacentCells board = Set.fromList . okToOpen . (`adjacentCells` board)

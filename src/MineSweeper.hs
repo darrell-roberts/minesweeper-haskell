@@ -210,7 +210,8 @@ collect board = foldr fcheck . (mempty,)
         | key `IntSet.member` visited = (freeCells, visited)
         | c ^. adjacentMines == mempty =
             let allAdjacent = getAdjacentCells board c
-                (nestedFreeCells, nestedVisited) = collect board (IntSet.insert key visited) allAdjacent
+                (nestedFreeCells, nestedVisited) =
+                    collect board (IntSet.insert key visited) allAdjacent
              in ( Set.insert c allAdjacent <> freeCells <> nestedFreeCells
                 , IntSet.insert key visited <> nestedVisited
                 )
