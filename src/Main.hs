@@ -71,24 +71,26 @@ gameLoop ::
     (MonadReader GameEnv m, MonadIO m, MonadState GameState m) =>
     m ()
 gameLoop =
-    get >>= \GameState{status} ->
-        case status of
-            Loss -> do
-                drawBoard
-                liftIO $ putStrLn "\nYou Lose!"
-            Win -> do
-                drawBoard
-                liftIO $ putStrLn "\nYou Win!"
-            Active -> do
-                promptUser >>= parseInput >>= \case
-                    Open p -> openCell p
-                    Flag p -> flagCell p
-                    Invalid s -> liftIO $ printf "\nInvalid command: \"%s\"\n" s
-                gameLoop
+    get >>= \case
+        GameState{status = Loss} -> do
+            drawBoard
+            liftIO $ putStrLn "\nYou Lose!"
+        GameState{status = Win} -> do
+            drawBoard
+            liftIO $ putStrLn "\nYou Win!"
+        GameState{status = Active} -> do
+            promptUser >>= parseInput >>= \case
+                Open p -> openCell p
+                Flag p -> flagCell p
+                Invalid s -> liftIO $ printf "\nInvalid command: \"%s\"\n" s
+            gameLoop
 
 -- | Create a `GameEnv` from opitonal arguments.
 parseArgs :: [String] -> Maybe GameEnv
-parseArgs (x : y : _) = GameEnv <$> readMaybe x <*> readMaybe y <*> Just defaultDifficulty
+parseArgs (x : y : _) =
+    GameEnv <$> readMaybe x
+        <*> readMaybe y
+        <*> Just defaultDifficulty
 parseArgs _ = Nothing
 
 -- | Draw the current board state and prompt Player for command.
