@@ -1,6 +1,3 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE NamedFieldPuns #-}
-
 {- |
     Module for game display.
 -}
@@ -10,61 +7,51 @@ module MineSweeperDisplay (
     drawGameBoard
 ) where
 
-import Control.Lens (preview, to, view, (^.), (^?))
+import Control.Lens         (preview, to, view, (^.), (^?))
 import Control.Monad.Reader (MonadIO, liftIO)
-import Control.Monad.State (MonadState, get)
-import Data.Foldable (toList)
-import Data.Function (on)
-import Data.List (groupBy)
-import qualified Data.Sequence as Seq
-import MineSweeperData (
-    Board,
-    Cell,
-    GameState (..),
-    -- HasDigit(toChar),
-    adjacentMines,
-    coveredFlaggedLens,
-    coveredMinedLens,
-    pos,
-    unCoveredLens,
-    xCoordLens,
-    yCoordLens,
- )
-import Text.Printf (printf)
+import Control.Monad.State  (MonadState, get)
+import Data.Foldable        (toList)
+import Data.Function        (on)
+import Data.List            (groupBy)
+import Data.Sequence        qualified as Seq
+import MineSweeperData      (Board, Cell, GameState (..), adjacentMines,
+                             coveredFlaggedLens, coveredMinedLens, pos,
+                             unCoveredLens, xCoordLens, yCoordLens)
+import Text.Printf          (printf)
 
 -- | Group board by rows
-groupedByRows :: Board -> [[Cell]]
+groupedByRows ∷ Board → [[Cell]]
 groupedByRows =
     let yAxis = view yCoordLens
      in groupBy ((==) `on` yAxis) . toList . Seq.sortBy (compare `on` yAxis)
 
 -- | Cell character rendering.
-displayCell :: Cell -> String
+displayCell ∷ Cell → String
 displayCell c
-    | c ^? unCoveredLens == Just True = "\x1f4a3" -- 'X'
-    | c ^? coveredFlaggedLens == Just True = "\x1f3f4" -- "?"
+    | c ^? unCoveredLens == Just True = "X" -- "\x1f4a3" --
+    | c ^? coveredFlaggedLens == Just True = "?" -- "\x1f3f4" --
     | c ^? (unCoveredLens . to not) == Just True =
         if c ^. adjacentMines /= mempty
-            then "   " <> show (c^.adjacentMines) -- toChar $ c ^. adjacentMines
-            else "\x1f431" -- '▢'
-    | otherwise = "\x26aa" -- '.'
+            then " " <> show (c^.adjacentMines) -- toChar $ c ^. adjacentMines
+            else  "▢" -- "\x1f431" -- "O" --
+    | otherwise = "." -- "\x26aa" --
 
 -- | Display mined cell coordinates for cheating.
-cheat :: Board -> String
+cheat ∷ Board → String
 cheat = show . fmap (view pos) . Seq.filter ((== Just True) . preview coveredMinedLens)
 
-rows :: Board -> [[Cell]]
+rows ∷ Board → [[Cell]]
 rows = groupedByRows
 
-drawGameBoard :: Board -> IO ()
+drawGameBoard ∷ Board → IO ()
 drawGameBoard board = do
-    printf "%3s" ""
-    mapM_ (printf " %3d") $ view xCoordLens <$> head (rows board)
+    printf "%4s" ""
+    mapM_ (printf "%4d") $ view xCoordLens <$> head (rows board)
     printf "\n\n"
     mapM_
         ( \row -> do
-            printf "%3d" $ yCoord row
-            mapM_ (printf "%3s" . displayCell) row
+            printf "%4d" $ yCoord row
+            mapM_ (printf "%4s" . displayCell) row
             printf "\n\n"
         )
         $ rows board
@@ -72,7 +59,7 @@ drawGameBoard board = do
         yCoord = view yCoordLens . head
 
 -- | Draw the Game Board to the console.
-drawBoard :: (MonadState GameState m, MonadIO m) => m ()
+drawBoard ∷ (MonadState GameState m, MonadIO m) ⇒ m ()
 drawBoard =
     get >>= \GameState{totalMines, totalCovered, totalFlagged, board} ->
         liftIO $ do
